@@ -96,9 +96,13 @@ jobs:
           mkdir -p wine/build-macos
           cd wine/build-macos
           if [ ! -f Makefile ]; then
+            # --enable-archs=no : ce build ne sert qu'aux outils hôte (winebuild)
+            # et aux en-têtes générés côté unix ; pas besoin des DLL PE ici, ce
+            # qui évite d'exiger un toolchain PE (aarch64-w64-mingw32) pour ce
+            # build-là (voir build-arm64ec plus bas pour le côté PE).
             ../configure --without-x --without-freetype --without-gstreamer \
               --without-cups --without-sane --without-usb --without-krb5 \
-              --disable-tests
+              --enable-archs=no --disable-tests
           fi
           make -j"$(sysctl -n hw.ncpu)"
 

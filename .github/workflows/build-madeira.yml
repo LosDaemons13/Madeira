@@ -60,10 +60,17 @@ jobs:
       # Wine "hôte" (macOS), utilisé par build/d3d11-triangle/build.sh pour
       # exécuter hlsl_compile.exe et compiler les shaders — distinct du Wine
       # embarqué dans l'app iOS. Le script attend le binaire à /opt/homebrew/bin/wine.
+      #
+      # gcenx/wine a supprimé le cask "wine-crossover" (16/04/2026) au profit de
+      # "game-porting-toolkit" (même base CrossOver). Le cask "wine-stable"
+      # d'Homebrew est lui aussi désactivé depuis le 01/09/2026
+      # (fails_gatekeeper_check) : GPTK est donc la seule option restante.
+      # Ses binaires sont x86_64 (nécessitent Rosetta) et nommés "wine64".
       - name: Installer Wine (hôte)
         run: |
-          brew install --cask gcenx/wine/wine-crossover
-          sudo xattr -dr com.apple.quarantine "/Applications/Wine Crossover.app" || true
+          softwareupdate --install-rosetta --agree-to-license
+          brew install --cask gcenx/wine/game-porting-toolkit
+          sudo ln -sf "$(brew --prefix)/bin/wine64" /opt/homebrew/bin/wine
           /opt/homebrew/bin/wine --version
 
       # Chaque sous-dossier de build/ a son propre build.sh d'après le README.

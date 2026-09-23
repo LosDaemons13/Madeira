@@ -64,7 +64,7 @@ jobs:
           for script in build/*/build.sh; do
             echo "== Running $script =="
             chmod +x "$script"
-            "$script"
+            bash -x "$script"
           done
 
       - name: Build de l'app iOS (non signée)

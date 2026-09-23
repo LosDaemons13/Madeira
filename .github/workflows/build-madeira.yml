@@ -1,0 +1,99 @@
+name: Build Madeira IPA
+
+on:
+  workflow_dispatch: {}
+  # Décommente pour rebuild auto chaque semaine (profil gratuit expire à J+7)
+  # schedule:
+  #   - cron: '0 6 * * 1'
+
+jobs:
+  build:
+    runs-on: macos-14
+    timeout-minutes: 360  # build très long attendu (Wine+FEX+DXMT)
+
+    steps:
+      - name: Checkout avec sous-modules
+        uses: actions/checkout@v4
+        with:
+          repository: LosDaemons13/Madeira
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Afficher la version Xcode
+        run: xcodebuild -version
+
+      # Le repo indique que les DLL du VC++ runtime ne sont pas fournies
+      # (licence) — voir tools/fetch-vcruntime.md pour la méthode officielle.
+      # Adapte cette étape une fois que tu as lu ce fichier en local.
+      - name: Récupérer le runtime VC++
+        run: |
+          cat tools/fetch-vcruntime.md
+          echo "⚠️ Complète cette étape selon les instructions ci-dessus"
+
+      # Cache des artefacts de compilation natifs pour accélérer les builds
+      # suivants (sans ça, chaque rebuild hebdo recompile tout Wine/FEX/DXMT)
+      - name: Cache build natif
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/**/build
+            FEX/build
+            wine/build
+            research/dxmt/build
+          key: madeira-native-${{ hashFiles('FEX/**', 'wine/**', 'research/dxmt/**') }}
+          restore-keys: |
+            madeira-native-
+
+      # Toolchain LLVM-mingw (cross-compilateur macOS -> Windows), attendu par
+      # build/*/build.sh sous toolchains/llvm-mingw-<TAG>-ucrt-macos-universal/
+      - name: Télécharger le toolchain llvm-mingw
+        env:
+          LLVM_MINGW_TAG: "20260421"
+        run: |
+          mkdir -p toolchains
+          curl -L -o llvm-mingw.tar.xz \
+            "https://github.com/mstorsjo/llvm-mingw/releases/download/${LLVM_MINGW_TAG}/llvm-mingw-${LLVM_MINGW_TAG}-ucrt-macos-universal.tar.xz"
+          tar -xf llvm-mingw.tar.xz -C toolchains
+          rm llvm-mingw.tar.xz
+          ls toolchains/llvm-mingw-${LLVM_MINGW_TAG}-ucrt-macos-universal/bin | head
+
+      # Chaque sous-dossier de build/ a son propre build.sh d'après le README.
+      # Vérifie la liste exacte avec `ls build/` après un premier checkout local.
+      - name: Build des briques natives (Wine / FEX / DXMT)
+        run: |
+          for script in build/*/build.sh; do
+            echo "== Running $script =="
+            chmod +x "$script"
+            "$script"
+          done
+
+      - name: Build de l'app iOS (non signée)
+        run: |
+          xcodebuild \
+            -project app/Madeira.xcodeproj \
+            -scheme Madeira \
+            -configuration Release \
+            -sdk iphoneos \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            -derivedDataPath build_output \
+            build
+
+      - name: Empaqueter en .ipa non signé
+        run: |
+          cd build_output/Build/Products/Release-iphoneos
+          mkdir -p Payload
+          cp -r Madeira.app Payload/
+          zip -r ../../../../Madeira-unsigned.ipa Payload
+
+      - name: Publier en Release GitHub
+        # comme pour DokkanOverlay : Releases plutôt que les artifacts,
+        # pour éviter les quotas de stockage
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          files: Madeira-unsigned.ipa
+          prerelease: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

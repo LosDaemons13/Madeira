@@ -38,11 +38,22 @@ jobs:
           path: |
             build/**/build
             FEX/build
-            wine/build
+            wine/build-macos
+            wine/build-arm64ec
             research/dxmt/build
+            research/dxmt/build-pe
           key: madeira-native-${{ hashFiles('FEX/**', 'wine/**', 'research/dxmt/**') }}
           restore-keys: |
             madeira-native-
+
+      # Dépendances de build pour Wine sur macOS : les bison/flex fournis par
+      # Xcode sont les versions BSD, insuffisantes pour les grammaires de Wine.
+      - name: Installer les dépendances de build Wine
+        run: |
+          brew install bison flex gettext pkg-config
+          echo "$(brew --prefix bison)/bin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix flex)/bin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix gettext)/bin" >> "$GITHUB_PATH"
 
       # Toolchain LLVM-mingw (cross-compilateur macOS -> Windows), attendu par
       # build/*/build.sh sous toolchains/llvm-mingw-<TAG>-ucrt-macos-universal/
@@ -72,6 +83,40 @@ jobs:
           brew install --cask gcenx/wine/game-porting-toolkit
           sudo ln -sf "$(brew --prefix)/bin/wine64" /opt/homebrew/bin/wine
           /opt/homebrew/bin/wine --version
+
+      # build/{ntdll,win32u,wineserver}-unix et build/d3d11-triangle attendent
+      # un arbre Wine déjà configuré/compilé (config.h, headers générés par DLL,
+      # winebuild) sous wine/build-macos — rien dans le dépôt ne le construisait
+      # jusqu'ici (le script qui le faisait, .xtool/configure-wine.sh, est un
+      # outil local à l'auteur et volontairement absent du repo, cf. .gitignore).
+      # Reconstruction "from scratch" : build natif standard de Wine pour macOS,
+      # juste assez pour obtenir winebuild + les en-têtes générés par DLL.
+      - name: Configurer et compiler Wine (hôte macOS)
+        run: |
+          mkdir -p wine/build-macos
+          cd wine/build-macos
+          if [ ! -f Makefile ]; then
+            ../configure --without-x --without-freetype --without-gstreamer \
+              --without-cups --without-sane --without-usb --without-krb5 \
+              --disable-tests
+          fi
+          make -j"$(sysctl -n hw.ncpu)"
+
+      # Arbre PE cross-compilé (aarch64-w64-mingw32 + arm64ec-w64-mingw32 via
+      # llvm-mingw) : fournit les en-têtes widl générés (dwrite.h, etc.) que
+      # build/ntdll-unix/build.sh va chercher sous wine/build-arm64ec/include.
+      - name: Configurer et compiler Wine (PE arm64ec cross)
+        env:
+          LLVM_MINGW_TAG: "20260421"
+        run: |
+          export PATH="$PWD/toolchains/llvm-mingw-${LLVM_MINGW_TAG}-ucrt-macos-universal/bin:$PATH"
+          mkdir -p wine/build-arm64ec
+          cd wine/build-arm64ec
+          if [ ! -f Makefile ]; then
+            ../configure --enable-archs=arm64ec --with-mingw=llvm-mingw \
+              --disable-tests
+          fi
+          make -j"$(sysctl -n hw.ncpu)"
 
       # Chaque sous-dossier de build/ a son propre build.sh d'après le README.
       # Vérifie la liste exacte avec `ls build/` après un premier checkout local.

@@ -62,7 +62,7 @@ jobs:
       # embarqué dans l'app iOS. Le script attend le binaire à /opt/homebrew/bin/wine.
       - name: Installer Wine (hôte)
         run: |
-          brew install --cask wine-stable
+          brew install --cask --no-quarantine gcenx/wine/wine-crossover
           /opt/homebrew/bin/wine --version
 
       # Chaque sous-dossier de build/ a son propre build.sh d'après le README.

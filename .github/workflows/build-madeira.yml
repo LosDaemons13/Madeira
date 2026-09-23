@@ -57,6 +57,14 @@ jobs:
           rm llvm-mingw.tar.xz
           ls toolchains/llvm-mingw-${LLVM_MINGW_TAG}-ucrt-macos-universal/bin | head
 
+      # Wine "hôte" (macOS), utilisé par build/d3d11-triangle/build.sh pour
+      # exécuter hlsl_compile.exe et compiler les shaders — distinct du Wine
+      # embarqué dans l'app iOS. Le script attend le binaire à /opt/homebrew/bin/wine.
+      - name: Installer Wine (hôte)
+        run: |
+          brew install --cask wine-stable
+          /opt/homebrew/bin/wine --version
+
       # Chaque sous-dossier de build/ a son propre build.sh d'après le README.
       # Vérifie la liste exacte avec `ls build/` après un premier checkout local.
       - name: Build des briques natives (Wine / FEX / DXMT)
